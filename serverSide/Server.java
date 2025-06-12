@@ -2,6 +2,7 @@ package serverSide;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -30,17 +31,21 @@ public class Server {
 
     private void acceptingClients() throws Exception {
         while (true) {
+            
             Socket s = serverSocket.accept();
+            
             BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream()));
             String name = in.readLine();
-
+            
             if (name == null || name.isEmpty() || name.equals("test")) {
                 System.out.println("Client did not provide a valid name. Disconnecting.");
+                in.close();
                 s.close();
                 continue;
             }
+            PrintWriter out = new PrintWriter(s.getOutputStream(), true);
 
-            clientList.add(new Client(name, s, in));
+            clientList.add(new Client(name, s, in,out));
             System.out.println("Client " + name + " connected.");
         }
     }
@@ -56,12 +61,16 @@ public class Server {
 
                         if (msg == null || msg.equalsIgnoreCase("exit")) {
                             System.out.println("Client " + client.getName() + " has exited.");
+                            client.closeall();
                             clientList.remove(client);
                             client.getSocket().close();
                             continue;
                         }
+                        String sendmsg = client.getName() + ": " + msg;
+                        System.out.println(sendmsg);
+                        sendmessagetoOthers(client, sendmsg);
 
-                        System.out.println(client.getName() + ": " + msg);
+                        
                     }
                 } catch (Exception e) {
                     System.out.println("Error with client " + client.getName() + ": " + e.getMessage());
@@ -75,10 +84,39 @@ public class Server {
             }
 
             try {
-                Thread.sleep(100); // avoid tight loop
+                Thread.sleep(100); 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
+        }
+    }
+
+    private void sendmessagetoOthers(Client client, String sendmsg) {
+        for (Client c : clientList) {
+            if (!c.getName().equals(client.getName())) {
+                try {
+                    
+                    if (c.out != null) {
+                        c.out.println(sendmsg);
+                    }
+                } catch (Exception e) {
+                    System.out.println("Error sending message to " + c.getName() + ": " + e.getMessage());
+                }
+            }
+        }
+    }
+
+    public void closeServer() {
+        try {
+            for (Client client : clientList) {
+                client.closeall();
+            }
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+            System.out.println("Server closed.");
+        } catch (Exception e) {
+            System.out.println("Error closing server: " + e.getMessage());
         }
     }
 }
